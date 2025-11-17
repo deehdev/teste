@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
+import os 
 import zmq
 import msgpack
 import random
 import threading
 import time
 from datetime import datetime, timezone
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 
 # ---------------------------------------------------
-# CONFIG
+# CONFIG (padrões com override por env)
 # ---------------------------------------------------
-REQ_ADDR = "tcp://broker:5555"
-SUB_ADDR = "tcp://proxy:5558"
+REQ_ADDR = os.environ.get("REQ_ADDR", "tcp://broker:5555")
+SUB_ADDR = os.environ.get("SUB_ADDR", "tcp://proxy:5558")
 
 # ---------------------------------------------------
 # RELÓGIO LÓGICO
@@ -31,14 +34,14 @@ def update_clock(recv):
             rc = int(recv)
             logical_clock = max(logical_clock, rc) + 1
         except:
-            pass
+            logical_clock += 1
         return logical_clock
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 # ---------------------------------------------------
-# REQUEST (REQ → REP)
+# REQUEST (REQ → REP) com poller/timeout
 # ---------------------------------------------------
 def send_req(sock, service, data=None, timeout=5.0):
     if data is None:
@@ -52,9 +55,13 @@ def send_req(sock, service, data=None, timeout=5.0):
     }
 
     encoded = msgpack.packb(env, use_bin_type=True)
-    sock.send(encoded)
+    try:
+        # enviar
+        sock.send(encoded)
+    except Exception as e:
+        return {"service":"error","data":{"status":str(e)}}
 
-    # esperar reply
+    # esperar reply com poller
     try:
         poller = zmq.Poller()
         poller.register(sock, zmq.POLLIN)
@@ -88,6 +95,7 @@ def sub_listener(sub):
 
             # mensagens de publicação em canal
             if svc == "publish":
+                # servidor pode usar keys "message" ou "msg" dependendo do código
                 user = data.get("user") or data.get("src") or "?"
                 message = data.get("message") or data.get("msg") or ""
                 print(f"[{topic}] {user}: {message}")
@@ -98,11 +106,12 @@ def sub_listener(sub):
                 message = data.get("message") or data.get("msg") or ""
                 print(f"💌 PRIVADA de {src}: {message}")
 
-            # replicação / servidores
+            # replicação / servidores / outros tópicos
             else:
                 print(f"[{topic}][{svc}] {data}")
 
         except Exception as e:
+            # não mata a thread em caso de erro temporário
             print("Erro no SUB:", e)
             time.sleep(0.5)
 
@@ -112,11 +121,14 @@ def sub_listener(sub):
 def heartbeat(username):
     ctx = zmq.Context()
     hb = ctx.socket(zmq.REQ)
+    hb.setsockopt(zmq.LINGER, 0)
     hb.connect(REQ_ADDR)
+    # espera curta para estabilizar
+    time.sleep(0.05)
     while True:
         try:
-            send_req(hb, "heartbeat", {"user": username})
-        except:
+            send_req(hb, "heartbeat", {"user": username}, timeout=2.0)
+        except Exception:
             pass
         time.sleep(5)
 
@@ -146,11 +158,18 @@ def main():
     print(f"\nBOT iniciado como {username}\n")
 
     ctx = zmq.Context()
-    req = ctx.socket(zmq.REQ)
-    req.connect(REQ_ADDR)
 
+    # REQ socket (clientes -> servidor)
+    req = ctx.socket(zmq.REQ)
+    req.setsockopt(zmq.LINGER, 0)
+    req.connect(REQ_ADDR)
+    time.sleep(0.05)  # dar tempo para o connect estabilizar
+
+    # SUB socket (recebe do proxy XPUB)
     sub = ctx.socket(zmq.SUB)
+    sub.setsockopt(zmq.LINGER, 0)
     sub.connect(SUB_ADDR)
+    time.sleep(0.05)
 
     # login
     r = send_req(req, "login", {"user": username})
@@ -158,7 +177,10 @@ def main():
     print("LOGIN:", status)
 
     # subscreve tópicos privados e canais
-    sub.setsockopt_string(zmq.SUBSCRIBE, username)
+    try:
+        sub.setsockopt_string(zmq.SUBSCRIBE, username)
+    except Exception as e:
+        print("Erro subscribe user:", e)
 
     # heartbeat (opcional)
     threading.Thread(target=heartbeat, args=(username,), daemon=True).start()
@@ -167,14 +189,18 @@ def main():
     r = send_req(req, "channels")
     channels = r.get("data", {}).get("channels", [])
     if not channels:
-        # observe: servidor espera key "channel"
+        # o servidor espera a key "channel" para criar canal
         send_req(req, "channel", {"channel": "geral"})
         channels = ["geral"]
 
     # escolhe subscrições e solicita ao servidor subscribe
+    # usar pelo menos 1 canal
     salas = random.sample(channels, k=max(1, min(len(channels), 1)))
     for c in salas:
-        sub.setsockopt_string(zmq.SUBSCRIBE, c)
+        try:
+            sub.setsockopt_string(zmq.SUBSCRIBE, c)
+        except Exception as e:
+            print("Erro subscribe canal:", e)
         send_req(req, "subscribe", {"user": username, "topic": c})
 
     print("Canais inscritos:", salas)

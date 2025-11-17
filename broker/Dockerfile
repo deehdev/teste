@@ -1,10 +1,10 @@
-FROM golang:1.23-bullseye AS builder
+FROM golang:1.23 AS builder
 
+# instalar dependências do ZMQ (OBRIGATÓRIO)
 RUN apt-get update && apt-get install -y \
     libzmq3-dev \
-    libsodium-dev \
     pkg-config \
-    git
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -12,13 +12,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o broker .
 
-FROM debian:bullseye-slim
+# agora sim compila
+RUN CGO_ENABLED=1 go build -o broker .
+
+# ------------------------------
+FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
-    libzmq5 \
-    libsodium23
+    libzmq5 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /app/broker .

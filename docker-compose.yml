@@ -40,8 +40,9 @@ services:
     ports:
       - "5555:5555"
     depends_on:
-      - proxy
-      - ref
+     - proxy
+     - ref
+
 
   # SERVERS
   server_a:

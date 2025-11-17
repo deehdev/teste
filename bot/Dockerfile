@@ -22,4 +22,5 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Expor nada (bot não recebe conexões externas)
-CMD ["python", "bot.py"]
+CMD ["python", "-u", "bot.py"]
+

@@ -1,50 +1,82 @@
 package main
 
 import (
-	"log"
+    "log"
+    "os"
+    "sync/atomic"
 
-	zmq "github.com/pebbe/zmq4"
+    zmq "github.com/pebbe/zmq4"
 )
 
+var counter uint64
+
 func main() {
-	// Cria contexto
-	ctx, err := zmq.NewContext()
-	if err != nil {
-		log.Fatal("Erro criando contexto ZMQ:", err)
-	}
-	defer ctx.Term()
+    xsubPort := os.Getenv("XSUB_PORT")
+    xpubPort := os.Getenv("XPUB_PORT")
 
-	// Recebe SUB dos servidores (PUB deles)
-	xsub, err := ctx.NewSocket(zmq.XSUB)
-	if err != nil {
-		log.Fatal("Erro criando XSUB:", err)
-	}
-	defer xsub.Close()
+    if xsubPort == "" {
+        xsubPort = "5557"
+    }
+    if xpubPort == "" {
+        xpubPort = "5558"
+    }
 
-	// Envia PUB para bots/clients (SUB)
-	xpub, err := ctx.NewSocket(zmq.XPUB)
-	if err != nil {
-		log.Fatal("Erro criando XPUB:", err)
-	}
-	defer xpub.Close()
+    ctx, err := zmq.NewContext()
+    if err != nil {
+        log.Fatal("[BROKER] Erro contexto:", err)
+    }
 
-	// Liga portas
-	if err := xsub.Bind("tcp://*:5557"); err != nil {
-		log.Fatal("Erro ao fazer bind XSUB:", err)
-	}
-	if err := xpub.Bind("tcp://*:5558"); err != nil {
-		log.Fatal("Erro ao fazer bind XPUB:", err)
-	}
+    xsub, err := ctx.NewSocket(zmq.XSUB)
+    if err != nil {
+        log.Fatal("[BROKER] Erro XSUB:", err)
+    }
+    defer xsub.Close()
 
-	log.Println("Proxy XPUB/XSUB iniciado na rota 5557 <-> 5558")
+    xpub, err := ctx.NewSocket(zmq.XPUB)
+    if err != nil {
+        log.Fatal("[BROKER] Erro XPUB:", err)
+    }
+    defer xpub.Close()
 
-	// SUBSCRIBE global (evita travar PUBs até o primeiro SUB real)
-	xsub.SendBytes([]byte{1}, 0)
+    if err := xsub.Bind("tcp://*:" + xsubPort); err != nil {
+        log.Fatal("[BROKER] Erro bind XSUB:", err)
+    }
+    if err := xpub.Bind("tcp://*:" + xpubPort); err != nil {
+        log.Fatal("[BROKER] Erro bind XPUB:", err)
+    }
 
-	// Loop do proxy
-	for {
-		if err := zmq.Proxy(xsub, xpub, nil); err != nil {
-			log.Println("Erro no proxy — reiniciando:", err)
-		}
-	}
+    log.Printf("Broker XPUB/XSUB ativo — roteando %s <-> %s\n", xsubPort, xpubPort)
+
+    // Subscrição global para não travar PUB antes do primeiro SUB
+    xsub.SendBytes([]byte{1}, 0)
+
+    poller := zmq.NewPoller()
+    poller.Add(xsub, zmq.POLLIN)
+    poller.Add(xpub, zmq.POLLIN)
+
+    for {
+        events, err := poller.Poll(-1)
+        if err != nil {
+            log.Println("[BROKER] Erro no poll:", err)
+            continue
+        }
+
+        for _, evt := range events {
+
+            sock := evt.Socket
+
+            // Mensagens vindo dos servidores → enviadas aos clientes
+            if sock == xsub {
+                msg, _ := sock.RecvBytes(0)
+                atomic.AddUint64(&counter, 1)
+                xpub.SendBytes(msg, 0)
+            }
+
+            // Mensagens de SUBSCRIÇÃO vindo dos clientes → enviadas aos servidores
+            if sock == xpub {
+                msg, _ := sock.RecvBytes(0)
+                xsub.SendBytes(msg, 0)
+            }
+        }
+    }
 }
