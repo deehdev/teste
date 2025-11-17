@@ -1,0 +1,145 @@
+version: "3.8"
+
+services:
+
+  # ======================================================
+  #  BROKER (REQ/REP router)
+  # ======================================================
+  broker:
+    build: ./broker
+    image: broker
+    container_name: broker
+    environment:
+      - SERVERS=server_a:7000,server_b:7001,server_c:7002
+    networks:
+      - chatnet
+    ports:
+      - "5555:5555"   # entrada dos clients e bots
+    depends_on:
+      - proxy
+      - ref
+
+  # ======================================================
+  #  PROXY PUB/SUB (XSUB <-> XPUB)
+  # ======================================================
+  proxy:
+    build: ./proxy
+    image: proxy
+    container_name: proxy
+    networks:
+      - chatnet
+    ports:
+      - "5560:5560"   # XPUB exposto para clients/bots
+
+  # ======================================================
+  #  SERVIDOR DE REFERÊNCIA (REF)
+  # ======================================================
+  ref:
+    build: ./ref
+    image: ref
+    container_name: ref
+    networks:
+      - chatnet
+    ports:
+      - "6000:6000"
+
+  # ======================================================
+  #  SERVIDORES UNIFICADOS (REP + PUB + SYNC)
+  # ======================================================
+
+  server_a:
+    build: ./server_unified
+    image: server_unified
+    container_name: server_a
+    networks:
+      - chatnet
+    environment:
+      - SERVER_NAME=a
+      - SERVER_HOST=server_a       # usado para Berkeley e REF
+      - SERVER_REP_PORT=7000
+      - REF_ADDR=tcp://ref:6000
+      - PROXY_PUB_ADDR=tcp://proxy:5560
+    depends_on:
+      - ref
+      - broker
+      - proxy
+
+  server_b:
+    build: ./server_unified
+    image: server_unified
+    container_name: server_b
+    networks:
+      - chatnet
+    environment:
+      - SERVER_NAME=b
+      - SERVER_HOST=server_b
+      - SERVER_REP_PORT=7001
+      - REF_ADDR=tcp://ref:6000
+      - PROXY_PUB_ADDR=tcp://proxy:5560
+    depends_on:
+      - ref
+      - broker
+      - proxy
+
+  server_c:
+    build: ./server_unified
+    image: server_unified
+    container_name: server_c
+    networks:
+      - chatnet
+    environment:
+      - SERVER_NAME=c
+      - SERVER_HOST=server_c
+      - SERVER_REP_PORT=7002
+      - REF_ADDR=tcp://ref:6000
+      - PROXY_PUB_ADDR=tcp://proxy:5560
+    depends_on:
+      - ref
+      - broker
+      - proxy
+
+  # ======================================================
+  #  CLIENTE INTERATIVO (Node.js)
+  # ======================================================
+  client:
+    build: ./client
+    image: client
+    container_name: client
+    networks:
+      - chatnet
+    depends_on:
+      - broker
+      - proxy
+
+  # ======================================================
+  #  BOTS AUTOMÁTICOS (Python)
+  # ======================================================
+  bot_1:
+    build: ./bot
+    container_name: bot_1
+    environment:
+      - BOT_NAME=bot_1
+      - REQ_ADDR=tcp://broker:5555
+      - SUB_ADDR=tcp://proxy:5560
+    networks:
+      - chatnet
+    depends_on:
+      - broker
+      - proxy
+
+  bot_2:
+    build: ./bot
+    container_name: bot_2
+    environment:
+      - BOT_NAME=bot_2
+      - REQ_ADDR=tcp://broker:5555
+      - SUB_ADDR=tcp://proxy:5560
+    networks:
+      - chatnet
+    depends_on:
+      - broker
+      - proxy
+
+networks:
+  chatnet:
+    driver: bridge
