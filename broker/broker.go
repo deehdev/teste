@@ -1,45 +1,32 @@
 package main
 
 import (
-	log "log"
+	"log"
+
 	zmq "github.com/pebbe/zmq4"
 )
 
 func main() {
-	// Criar contexto
-	ctx, err := zmq.NewContext()
-	if err != nil {
-		log.Fatal("[BROKER] Erro criando contexto:", err)
-	}
+	log.Println("[BROKER] INICIANDO...")
 
-	// FRONTEND = ROUTER (clientes/bots)
-	frontend, err := ctx.NewSocket(zmq.ROUTER)
-	if err != nil {
-		log.Fatal("[BROKER] Erro criando ROUTER:", err)
-	}
-	defer frontend.Close()
+	ctx, _ := zmq.NewContext()
+	defer ctx.Term()
 
-	if err := frontend.Bind("tcp://*:5555"); err != nil {
-		log.Fatal("[BROKER] Erro bind ROUTER (porta 5555):", err)
-	}
+	frontend, _ := ctx.NewSocket(zmq.ROUTER) // recebe REQ
+	frontend.Bind("tcp://*:5555")
+	log.Println("[BROKER] ROUTER 5555 OK")
 
-	// BACKEND = DEALER (servidores)
-	backend, err := ctx.NewSocket(zmq.DEALER)
-	if err != nil {
-		log.Fatal("[BROKER] Erro criando DEALER:", err)
-	}
-	defer backend.Close()
+	backend, _ := ctx.NewSocket(zmq.DEALER) // entrega aos servidores
+	backend.Bind("tcp://*:6000")
+	log.Println("[BROKER] DEALER 6000 OK")
 
-	// ✅ Bind na porta 5556 para coincidir com Docker Compose
-	if err := backend.Bind("tcp://*:5556"); err != nil {
-		log.Fatal("[BROKER] Erro bind DEALER (porta 5556):", err)
-	}
-
-	log.Println("[BROKER] REQ-REP ativo — ROUTER 5555 <-> DEALER 5556")
-
-	// Proxy ZMQ (round-robin)
-	err = zmq.Proxy(frontend, backend, nil)
-	if err != nil {
-		log.Fatal("[BROKER] Proxy terminou inesperadamente:", err)
+	for {
+		log.Println("[BROKER] Iniciando ciclo do Proxy...")
+		err := zmq.Proxy(frontend, backend, nil)
+		if err != nil {
+			log.Println("[BROKER] ERRO NO PROXY:", err)
+		} else {
+			log.Println("[BROKER] Proxy retornou sem erro (NÃO DEVERIA)")
+		}
 	}
 }

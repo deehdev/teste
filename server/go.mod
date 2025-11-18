@@ -1,9 +1,10 @@
-module ref
+module chatserver
 
-go 1.23
+go 1.22
 
 require (
-	github.com/pebbe/zmq4 v1.4.0
+	github.com/google/uuid v1.6.0
+	github.com/pebbe/zmq4 v1.2.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 

@@ -1,16 +1,14 @@
-FROM node:18-alpine
+FROM node:18
 
 WORKDIR /app
 
-# Instalar dependências do ZeroMQ
-RUN apk add --no-cache zeromq zeromq-dev python3 make g++ bash
+COPY package.json package-lock.json ./
+RUN npm install
 
-# Copiar package.json e instalar dependências
-COPY package*.json ./
-RUN npm install --production
-
-# Copiar todo o diretório client
 COPY . .
 
-# Comando padrão
-CMD ["node", "client.js"]
+# IMPORTANTE: ENTRYPOINT faz rodar o client.js
+ENTRYPOINT ["node", "client.js"]
+
+# IMPORTANTE: CMD vazio permite STDIN interativo
+CMD []

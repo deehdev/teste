@@ -1,292 +1,156 @@
-// ===============================
-// CLIENTE FINAL - PARTE 5 (LIMPO E CORRIGIDO)
-// ===============================
+// =====================================================
+// CLIENTE INTERATIVO (REPL) — TOTALMENTE CORRIGIDO
+// =====================================================
 
 const zmq = require("zeromq");
 const msgpack = require("@msgpack/msgpack");
 const readline = require("readline");
 
-let logicalClock = 0;
-let currentUser = null;
-
+// -------------------------------
+// Relógio lógico
+// -------------------------------
+let clock = 0;
 function incClock() {
-  logicalClock++;
-  return logicalClock;
+  clock++;
+  return clock;
+}
+function updateClock(received) {
+  clock = Math.max(clock, received) + 1;
 }
 
-function updateClock(recv) {
-  logicalClock = Math.max(logicalClock, recv) + 1;
-}
-
-// ===============================
-// CONFIG
-// ===============================
-
-const BROKER_REQ = "tcp://broker:5555";
-const PROXY_SUB = "tcp://proxy:5558";
-
+// -------------------------------
+// Conexão REQ → Broker
+// -------------------------------
+const REQ_ADDR = process.env.REQ_ADDR || "tcp://broker:5555";
 const req = new zmq.Request();
-const sub = new zmq.Subscriber();
 
-let busy = false;
+let busy = false; // evita dois comandos ao mesmo tempo
 
-// ===============================
-// START
-// ===============================
-
-async function start() {
-  console.log("Connected to server.");
-
-  await req.connect(BROKER_REQ);
-  console.log("[CLIENT] REQ conectado ao broker");
-
-  await sub.connect(PROXY_SUB);
-  console.log("[CLIENT] SUB conectado ao proxy (XPUB 5558)");
-
-  startSubLoop();
-  startInputLoop();
+async function connect() {
+  await req.connect(REQ_ADDR);
+  console.log("📡 Conectado ao broker em", REQ_ADDR);
 }
 
-start();
-
-// ===============================
-// SUB LOOP
-// ===============================
-
-async function startSubLoop() {
-  for await (const [topic, payload] of sub) {
-    try {
-      const env = msgpack.decode(payload);
-      updateClock(env.clock);
-
-      console.log(`\n[SUB:${topic}] mensagem recebida (clock=${env.clock}, local=${logicalClock})`);
-      console.log(env.data);
-
-      process.stdout.write("> ");
-    } catch (err) {
-      console.log("[SUB ERRO]", err);
-    }
-  }
-}
-
-// ===============================
-// SEND (REQ/REP) com TIMEOUT REAL
-// ===============================
-
+// -------------------------------
+// Envio de mensagens
+// -------------------------------
 async function send(service, data = {}) {
-  if (busy) {
-    console.log("Aguarde, requisição anterior ainda em andamento.");
-    return;
-  }
+  if (busy) throw new Error("O socket ainda está processando o comando anterior.");
   busy = true;
 
   try {
-    const envelope = {
-      service,
-      data,
-      timestamp: new Date().toISOString(),
-      clock: incClock()
-    };
+    data.timestamp = new Date().toISOString();
+    data.clock = incClock();
 
-    await req.send(msgpack.encode(envelope));
+    const env = { service, data };
 
-    // ---- TIMEOUT correto ----
-    let replyBytes;
-    try {
-      replyBytes = await Promise.race([
-        req.receive(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), 5000))
-      ]);
-    } catch (e) {
-      if (e.message === "TIMEOUT") {
-        console.log(`❌ [TIMEOUT] O servidor não respondeu ao serviço "${service}" em 5 segundos.`);
-        return;
-      }
-      throw e;
-    }
+    await req.send(msgpack.encode(env));
+    const reply = await req.receive();
 
-    const [reply] = replyBytes;
-    const decoded = msgpack.decode(reply);
-
-    updateClock(decoded.clock);
-
-    console.log(`\n[RESPOSTA:${service}] clock_local=${logicalClock}, clock_srv=${decoded.clock}`);
-
-    // Processamento das respostas
-    processReply(service, decoded, data);
+    const decoded = msgpack.decode(reply[0]);
+    updateClock(decoded.data.clock);
 
     return decoded;
-
-  } catch (err) {
-    console.log("[REQ ERRO]", err);
   } finally {
     busy = false;
   }
 }
 
-// ===============================
-// Tratamento unificado de respostas
-// ===============================
-
-function processReply(service, reply, data) {
-
-  if (service === "login") {
-    if (reply.data.status === "sucesso") {
-      console.log(`Login realizado como "${data.user}"`);
-      currentUser = data.user;
-      sub.subscribe(currentUser);
-      console.log(`Inscrito no tópico privado: ${currentUser}`);
-    } else {
-      console.log("Erro no login:", reply.data.description || "Usuário já existe");
-    }
-    return;
-  }
-
-  if (service === "users") {
-    const list = reply.data.users || [];
-    if (list.length === 0) console.log("Nenhum usuário cadastrado.");
-    else list.forEach(u => console.log(" - " + u));
-    return;
-  }
-
-  if (service === "channels") {
-    const list = reply.data.channels || [];
-    if (list.length === 0) console.log("Nenhum canal criado.");
-    else list.forEach(c => console.log(" - " + c));
-    return;
-  }
-
-  if (service === "channel") {
-    if (reply.data.status === "sucesso")
-      console.log(`Canal criado: "${data.channel}"`);
-    else
-      console.log("Erro ao criar canal:", reply.data.description || "Canal já existe");
-    return;
-  }
-
-  if (service === "publish") {
-    if (reply.data.status === "sucesso")
-      console.log(`Mensagem publicada no canal "${data.channel}"`);
-    else
-      console.log("Erro ao publicar:", reply.data.message || "Erro desconhecido");
-    return;
-  }
-
-  if (service === "message") {
-    if (reply.data.status === "sucesso")
-      console.log(`Mensagem enviada para "${data.dst}"`);
-    else
-      console.log("Erro ao enviar mensagem:", reply.data.message || "Usuário inexistente");
-    return;
-  }
-
-  if (service === "subscribe") {
-    console.log(`Inscrito no tópico ${data.topic}`);
-    return;
-  }
-
-  if (service === "unsubscribe") {
-    console.log(`Desinscrito do tópico ${data.topic}`);
-    return;
-  }
+// -------------------------------
+// Comandos
+// -------------------------------
+async function cmdLogin(args) {
+  const user = args[0];
+  if (!user) return console.log("Uso: login <nome>");
+  console.log(await send("login", { user }));
 }
 
-// ===============================
-// INPUT
-// ===============================
+async function cmdChannel(args) {
+  const name = args[0];
+  if (!name) return console.log("Uso: channel <nome>");
+  console.log(await send("channel", { channel: name }));
+}
 
+async function cmdChannels() {
+  console.log(await send("channels"));
+}
+
+async function cmdUsers() {
+  console.log(await send("users"));
+}
+
+async function cmdPublish(args) {
+  const channel = args[0];
+  const message = args.slice(1).join(" ");
+  if (!channel || !message) return console.log("Uso: publish <canal> <mensagem>");
+  console.log(await send("publish", { channel, message, user: "manual" }));
+}
+
+async function cmdMessage(args) {
+  const dst = args[0];
+  const message = args.slice(1).join(" ");
+  if (!dst || !message) return console.log("Uso: message <destino> <mensagem>");
+  console.log(await send("message", { src: "manual", dst, message }));
+}
+
+// -------------------------------
+// Tabela de comandos
+// -------------------------------
+const commands = {
+  login: cmdLogin,
+  channel: cmdChannel,
+  channels: cmdChannels,
+  users: cmdUsers,
+  publish: cmdPublish,
+  message: cmdMessage
+};
+
+// -------------------------------
+// REPL (com limpeza de caracteres invisíveis!)
+// -------------------------------
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout
+  output: process.stdout,
+  prompt: "> "
 });
 
-function showHelp() {
-  console.log(`
-Comandos disponíveis:
-
-  login <nome>               - realizar login
-  users                      - listar usuários
-  channels                   - listar canais
-  channel <nome>             - criar canal
-  publish <canal> <msg>      - enviar mensagem no canal
-  message <user> <msg>       - enviar mensagem privada
-  subscribe <topic>          - entrar em um canal/tópico
-  unsubscribe <topic>        - sair de um canal/tópico
-  help                       - mostrar esta lista
-  `);
-}
-
-function startInputLoop() {
-  showHelp();
-
-  rl.setPrompt("> ");
+async function startRepl() {
   rl.prompt();
 
   rl.on("line", async (line) => {
-    const parts = line.trim().split(/\s+/);
-    const command = parts[0]?.toLowerCase() || "";
+    // 🔥 CORREÇÃO CRÍTICA: remove lixo, tabs, \r, múltiplos espaços
+    const clean = line.replace(/\s+/g, " ").trim();
+
+    if (!clean.length) {
+      console.log("Comando inválido.");
+      return rl.prompt();
+    }
+
+    const tokens = clean.split(" ");
+    const cmd = tokens[0].toLowerCase();
+    const args = tokens.slice(1);
+
+    const handler = commands[cmd];
+
+    if (!handler) {
+      console.log("Comando desconhecido.");
+      return rl.prompt();
+    }
 
     try {
-      switch (command) {
-        case "login":
-          if (!parts[1]) console.log("Erro: faltando nome.");
-          else await send("login", { user: parts[1] });
-          break;
-
-        case "users": await send("users"); break;
-        case "channels": await send("channels"); break;
-
-        case "channel":
-          if (!parts[1]) console.log("Erro: faltando nome do canal.");
-          else await send("channel", { channel: parts[1] });
-          break;
-
-        case "publish":
-          if (!currentUser) console.log("Erro: faça login primeiro.");
-          else if (parts.length < 3) console.log("Uso: publish <canal> <mensagem>");
-          else await send("publish", {
-            user: currentUser,
-            channel: parts[1],
-            message: parts.slice(2).join(" ")
-          });
-          break;
-
-        case "message":
-          if (!currentUser) console.log("Erro: faça login primeiro.");
-          else if (parts.length < 3) console.log("Uso: message <user> <msg>");
-          else await send("message", {
-            src: currentUser,
-            dst: parts[1],
-            message: parts.slice(2).join(" ")
-          });
-          break;
-
-        case "subscribe":
-          if (!currentUser) console.log("Erro: faça login primeiro.");
-          else if (!parts[1]) console.log("Erro: faltando tópico.");
-          else {
-            sub.subscribe(parts[1]);
-            await send("subscribe", { user: currentUser, topic: parts[1] });
-          }
-          break;
-
-        case "unsubscribe":
-          if (!currentUser) console.log("Erro: faça login primeiro.");
-          else if (!parts[1]) console.log("Erro: faltando tópico.");
-          else {
-            sub.unsubscribe(parts[1]);
-            await send("unsubscribe", { user: currentUser, topic: parts[1] });
-          }
-          break;
-
-        case "help": showHelp(); break;
-        case "": break;
-        default: console.log("Comando desconhecido. Digite: help");
-      }
-    } catch (err) {
-      console.log("[CLIENT ERRO]", err);
+      await handler(args); // garante ordem
+    } catch (e) {
+      console.log("Erro:", e.message);
     }
 
     rl.prompt();
   });
 }
+
+// -------------------------------
+// Inicialização
+// -------------------------------
+(async () => {
+  await connect();
+  startRepl();
+})();
