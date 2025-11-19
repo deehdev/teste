@@ -6,7 +6,7 @@
 
 
 📡 Mensagens privadas — 📨 Canais públicos — 🤖 Bots automáticos — 🔁 Replicação — ⏱ Sincronização  
-**Projeto completo para a disciplina BCSL502 – Sistemas Distribuídos**
+**Projeto completo para a disciplina CC7261 – Sistemas Distribuídos**
 
 ---
 
