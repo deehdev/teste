@@ -80,9 +80,10 @@ def sub_listener(sub):
             if len(parts) < 2:
                 continue
 
-            topic = parts[0].decode().strip().lower()
-            env = msgpack.unpackb(parts[1], raw=False)
+            # ❗ CORRIGIDO: sem lowercase
+            topic = parts[0].decode().strip()
 
+            env = msgpack.unpackb(parts[1], raw=False)
             clk = env.get("clock", 0)
             update_clock(clk)
 
@@ -94,7 +95,7 @@ def sub_listener(sub):
                 print(f"[# {topic}] {data.get('user')}: {data.get('message')}   (ts={ts}, clock={clk})")
 
             elif svc == "message":
-                print(f"💌 {data.get('src')} → você: {data.get('message')}   (ts={ts}, clock={clk})")
+                print(f"💌 {data.get('src')} → você ({topic}): {data.get('message')}   (ts={ts}, clock={clk})")
 
         except Exception as e:
             print("Erro SUB:", e)
@@ -102,10 +103,10 @@ def sub_listener(sub):
 
 
 # ---------------------------------------------------
-# ASSINAR CANAL (SEGURO)
+# ASSINAR CANAL (CORRIGIDO)
 # ---------------------------------------------------
 def subscribe_channel(sub, subscribed, canal):
-    canal = str(canal).strip().lower()
+    canal = str(canal).strip()   # ❗ sem lowercase
     sub.setsockopt_string(zmq.SUBSCRIBE, canal)
     subscribed.add(canal)
     print("Assinado canal:", canal)
@@ -149,13 +150,12 @@ def main():
     r = send_req(req, "login", {"user": username})
     print("LOGIN:", r.get("data", {}).get("status"))
 
-    # LISTA DE INSCRIÇÕES
     subscribed = set()
 
-    # Sempre ouvir mensagens privadas
+    # Sempre ouvir mensagens privadas (CORRIGIDO)
     subscribe_channel(sub, subscribed, username)
 
-    # LISTAR canais
+    # LISTA DE CANAIS
     r = send_req(req, "channels")
     canais = r.get("data", {}).get("channels", [])
 
@@ -163,7 +163,7 @@ def main():
         send_req(req, "channel", {"name": "geral"})
         canais = ["geral"]
 
-    # ESCOLHE CANAL E ASSINA
+    # Escolhe canal e assina
     canal_escolhido = random.choice(canais)
     subscribe_channel(sub, subscribed, canal_escolhido)
 
@@ -173,17 +173,16 @@ def main():
 
     # LOOP PRINCIPAL
     while True:
-        # 40% chance → privado
+        # 40% → mensagem privada
         if random.random() < 0.4:
             dest = random.choice([n for n in NOMES if n != username])
             txt = random.choice(FRASES)
-
             send_req(req, "message", {"src": username, "dst": dest, "message": txt})
             print(f"💌 {username} → {dest}: {txt}")
 
-        # 60% chance → publish
+        # 60% → mensagem no canal
         else:
-            can = canal_escolhido.strip().lower()
+            can = canal_escolhido.strip()  # ❗CORRIGIDO
             if can not in subscribed:
                 print(f"⚠ NÃO inscrito no canal: {can}")
             else:
