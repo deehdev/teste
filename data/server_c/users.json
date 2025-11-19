@@ -1,35 +1,27 @@
 [
   {
-    "timestamp": "2025-11-19T00:30:53Z",
-    "user": "Lucas"
+    "timestamp": "2025-11-19T07:05:57Z",
+    "user": "Lucia"
   },
   {
     "timestamp": "2025-11-19T00:33:43Z",
     "user": "Laura"
   },
   {
-    "timestamp": "2025-11-19T01:48:19Z",
-    "user": "Ana"
-  },
-  {
-    "timestamp": "2025-11-19T01:48:19Z",
-    "user": "Juliana"
+    "timestamp": "2025-11-19T07:08:47Z",
+    "user": "Sofia"
   },
   {
     "timestamp": "2025-11-19T03:36:36Z",
     "user": "Kenia"
   },
   {
-    "timestamp": "2025-11-19T01:14:31Z",
-    "user": "Paula"
+    "timestamp": "2025-11-19T00:30:53Z",
+    "user": "Mateus"
   },
   {
-    "timestamp": "2025-11-19T00:52:56Z",
-    "user": "Carla"
-  },
-  {
-    "timestamp": "2025-11-19T00:52:56Z",
-    "user": "João"
+    "timestamp": "2025-11-19T06:57:05Z",
+    "user": "Bruno"
   },
   {
     "timestamp": "2025-11-19T01:12:05Z",
@@ -44,7 +36,39 @@
     "user": "Rafael"
   },
   {
+    "timestamp": "2025-11-19T00:52:56Z",
+    "user": "Carla"
+  },
+  {
+    "timestamp": "2025-11-19T00:52:56Z",
+    "user": "João"
+  },
+  {
+    "timestamp": "2025-11-19T07:03:43Z",
+    "user": "Renata"
+  },
+  {
     "timestamp": "2025-11-19T00:30:53Z",
-    "user": "Mateus"
+    "user": "Lucas"
+  },
+  {
+    "timestamp": "2025-11-19T01:48:19Z",
+    "user": "Ana"
+  },
+  {
+    "timestamp": "2025-11-19T07:08:47Z",
+    "user": "Pedro"
+  },
+  {
+    "timestamp": "2025-11-19T06:57:05Z",
+    "user": "Camila"
+  },
+  {
+    "timestamp": "2025-11-19T01:48:19Z",
+    "user": "Juliana"
+  },
+  {
+    "timestamp": "2025-11-19T01:14:31Z",
+    "user": "Paula"
   }
 ]

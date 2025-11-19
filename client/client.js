@@ -60,48 +60,39 @@ async function send(service, data = {}) {
   return decoded;
 }
 
-// -------------------------------
-// SUB Listener (mensagens recebidas)
-// -------------------------------
-// -----------------------
+/// -----------------------
 // SUB Listener (mensagens recebidas)
 // -----------------------
 async function startSubListener() {
   for await (const [topicBuf, msgBuf] of sub) {
     try {
-      const rawTopic = topicBuf.toString();
-      const topic = rawTopic.trim().replace(/[^a-zA-Z0-9_-]/g, "");
-
+      const topic = topicBuf.toString().trim();
       const env = msgpack.decode(msgBuf);
-      const service = env.service;
       const data = env.data || {};
+      const service = env.service;
 
       updateClock(data.clock);
 
-      // SALVAR O QUE O USUÁRIO ESTÁ DIGITANDO
+      // SALVAR texto atual
       const typed = rl.line;
 
-      // LIMPAR LINHA ATUAL
-      readline.cursorTo(process.stdout, 0);
+      // APAGAR linha atual
+      process.stdout.write("\r");
       readline.clearLine(process.stdout, 0);
 
-      // ---------------------------
-      // FORMATAR MENSAGEM RECEBIDA
-      // ---------------------------
+      // IMPRIMIR A MENSAGEM
       if (service === "publish") {
         console.log(`💬  #${topic} | ${data.user} → ${data.message}`);
       } else if (service === "message") {
         console.log(`📩  ${data.src} → você | ${data.message}`);
-      } else {
-        console.log(`🔧 [${topic}]`, env);
       }
 
-      // REIMPRIMIR PROMPT E TEXTO DIGITADO
+      // REIMPRIMIR PROMPT + TEXTO
       rl.prompt(true);
       process.stdout.write(typed);
 
     } catch (e) {
-      console.log("Erro no SUB:", e);
+      console.log("Erro SUB:", e);
     }
   }
 }
@@ -158,6 +149,11 @@ async function cmdPublish(args) {
   if (!channel || !message)
     return console.log("Uso: publish <canal> <mensagem>");
 
+  // ❌ Bloquear se não estiver inscrito
+  if (!subscriptions.has(channel)) {
+    return console.log(`🚫 Você não está inscrito no canal '${channel}'`);
+  }
+
   const r = await send("publish", {
     user: currentUser,
     channel,
@@ -166,6 +162,7 @@ async function cmdPublish(args) {
 
   console.log(r);
 }
+
 
 async function cmdMessage(args) {
   if (!currentUser) return console.log("Faça login primeiro.");
