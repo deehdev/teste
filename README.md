@@ -186,30 +186,40 @@ docker-compose build
 # Subir os contêineres
 docker-compose up
 
-## 🔍 Ver Logs dos Servidores
+# 🔍 Ver Logs dos Servidores
 
--Construir o ambiente
-**docker-compose build**
-- Subir os contêineres
-**docker-compose up**
+```bash
+// Construir o ambiente
+docker-compose build
 
-## 🤖 Bots<br>
-**Bots automáticos:** :
-- Criam um usuário aleatório
-- Escolhem um canal
-- Enviam mensagens aleatórias
-- Recebem mensagens em segundo plano
+// Subir os contêineres
+docker-compose up
 
-## 🧩 **6. Servidor de Referência (Go)**
+
+## 🤖 Bots Automáticos
+
+**O que fazem os bots:**
+
+- Criam um usuário aleatório  
+- Escolhem um canal  
+- Enviam mensagens aleatórias  
+- Recebem mensagens públicas e privadas
+
+
+## 🧩 Servidor de Referência (Go)
+
+**Funções do servidor de referência:**
+
 - Armazena:
   - nomes dos servidores
-  - Endereços
+  - endereços
   - ranks
-- Entrega rank ao servidor
-- Monitora heartbeat
-- Expira servidores inativos
-- Fornece lista de ranks 
-- Elege o coordenador
+- Entrega rank ao servidor  
+- Monitora heartbeat  
+- Expira servidores inativos  
+- Fornece lista de ranks  
+- Elege o coordenador  
+
   
 ## ⏱ Relógio Lógico (Lamport)
 
@@ -223,7 +233,7 @@ docker-compose up
 ✔ Ordenação causal  
 ✔ Replicações consistentes  
 ✔ Logs persistidos na mesma ordem em todos os servidores
----
+
 
 ## 🕒 Sincronização do Relógio Físico (Algoritmo de Berkeley)
 
@@ -232,7 +242,7 @@ docker-compose up
 - Envia ajustes  
 - Sincroniza a cada 10 mensagens  
 - Se coordenador falhar → eleição ocorre.
----
+
 
 ## 👤 Autor: Deise Adriana Silva Araújo
 
